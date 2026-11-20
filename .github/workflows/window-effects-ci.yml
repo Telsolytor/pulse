@@ -1,0 +1,81 @@
+
+name: Window Effects Build Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ui/window_effect_support.h'
+      - 'src/bench/window_effect_support_test.cpp'
+      - 'src/common/os_version.*'
+      - 'src/common/windows_compat.*'
+      - 'CMakeLists.txt'
+      - '.github/workflows/window-effects-ci.yml'
+  pull_request:
+    paths:
+      - 'src/ui/window_effect_support.h'
+      - 'src/bench/window_effect_support_test.cpp'
+      - 'src/common/os_version.*'
+      - 'src/common/windows_compat.*'
+      - 'CMakeLists.txt'
+      - '.github/workflows/window-effects-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: window-effects-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build Pulse and test window-effect support
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure MSVC x64 environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Show toolchain versions
+        shell: pwsh
+        run: |
+          cmake --version
+          ninja --version
+          cl
+
+      - name: Configure CMake
+        shell: pwsh
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Pulse and window-effect test
+        shell: pwsh
+        run: cmake --build build --target pulse pulse_window_effect_support_test --parallel 2
+
+      - name: Run window-effect support test
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "build/pulse_window_effect_support_test.exe")) {
+            throw "Window-effect test executable was not produced."
+          }
+          & "build/pulse_window_effect_support_test.exe"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Window-effect support test failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Upload build outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulse-window-effects-ci
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            build/pulse.exe
+            build/pulse_window_effect_support_test.exe
